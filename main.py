@@ -1,10 +1,11 @@
+import os
 import asyncio
 from aiogram import Bot, Dispatcher, F
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.filters import CommandStart
 
-# Bot tokenini kiriting
-BOT_TOKEN = "8255212804:AAHjnqUqaumH8rbB2d-PM2eU4484XmQgJQ0"
+# Tokenni Render Environment'dan oladi, topolmasa koddagidan foydalanadi
+BOT_TOKEN = os.getenv("BOT_TOKEN", "8255212804:AAHjnqUqaumH8rbB2d-PM2eU4484XmQgJQ0")
 
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
@@ -46,7 +47,6 @@ back_keyboard = InlineKeyboardMarkup(
 # /start komandasi uchun handler
 @dp.message(CommandStart())
 async def start_handler(message: Message):
-    # Foydalanuvchining username yoki ismini olish
     user_name = message.from_user.username
     if user_name:
         display_name = f"@{user_name}"
@@ -70,7 +70,6 @@ async def join_team_handler(callback: CallbackQuery):
         "Xullas jamoaga qo'shilish uchun shartlar shu!"
     )
     
-    # Xabarni o'zgartirish va orqaga qaytish tugmasini chiqarish
     await callback.message.edit_text(rules_text, reply_markup=back_keyboard)
     await callback.answer()
 
@@ -92,6 +91,9 @@ async def go_back_handler(callback: CallbackQuery):
 
 # Botni ishga tushirish
 async def main():
+    # Webhook xatosini tuzatish uchun eng muhim qator:
+    await bot.delete_webhook(drop_pending_updates=True)
+    
     print("Bot ishga tushdi...")
     await dp.start_polling(bot)
 
