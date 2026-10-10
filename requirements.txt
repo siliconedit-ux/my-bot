@@ -1,4 +1,3 @@
 telethon
 pydub
 imageio-ffmpeg
-pyaudioop
