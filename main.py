@@ -2,10 +2,10 @@ import os
 import asyncio
 import time
 from telethon import TelegramClient, events, Button
-from pydub import AudioSegment
+import imageio_ffmpeg
 
-# Render uchun ffmpeg yo'lini ko'rsatish
-AudioSegment.converter = "./ffmpeg"
+# FFmpeg yo'lini olish
+ffmpeg_path = imageio_ffmpeg.get_ffmpeg_exe()
 
 # Sizning API ma'lumotlaringiz
 API_ID = 33459811
@@ -15,9 +15,8 @@ API_HASH = '4ea33d6829d03d8293649aeb8db245d1'
 last_sent_time = 0
 LIMIT_SECONDS = 60
 
-# Vaqtinchalik fayllarni saqlash uchun lug'at (user_id: file_path)
+# Vaqtinchalik fayllarni saqlash uchun lug'at
 user_audio_cache = {}
-# Foydalanuvchi tanlagan chatni vaqtinchalik saqlash
 user_target_chat = {}
 
 client = TelegramClient('user_session', API_ID, API_HASH)
@@ -60,7 +59,6 @@ async def message_handler(event):
             buttons = []
             
             async for dialog in client.iter_dialogs(limit=30):
-                # Guruhlar, superguruhlar va kanallar
                 if dialog.is_group or dialog.is_channel:
                     buttons.append([Button.inline(f"👥 {dialog.name}", data=f"chat_{dialog.id}")])
 
@@ -73,13 +71,12 @@ async def message_handler(event):
         except Exception as e:
             await status_msg.edit(f"❌ Xatolik yuz berdi: {str(e)}")
 
-    # 2. Agar foydalanuvchi qo'lda username yoki chat ID yozsa (masalan: @username yoki -100...)
+    # 2. Agar foydalanuvchi qo'lda username yoki chat ID yozsa
     elif sender_id in user_audio_cache and (event.message.text and not event.message.text.startswith('/')):
         target = event.message.text.strip()
         user_target_chat[sender_id] = target
         await process_and_send_voice(event, sender_id, target)
 
-# Tugma orqali guruh tanlanganda
 @client.on(events.CallbackQuery(pattern=r"chat_"))
 async def chat_callback(event):
     sender_id = event.sender_id
@@ -104,7 +101,7 @@ async def cancel_callback(event):
         del user_target_chat[sender_id]
     await event.edit("❌ Amal bekor qilindi.")
 
-# Ovozli xabarga o'tkazib yuborish funksiyasi
+# Ovozli xabarga o'tkazib yuborish funksiyasi (FFmpeg orqali to'g'ridan-to'g'ri)
 async def process_and_send_voice(event, sender_id, target, edit_message=False):
     global last_sent_time
 
@@ -124,9 +121,22 @@ async def process_and_send_voice(event, sender_id, target, edit_message=False):
     output_file = f"output_voice_{sender_id}.ogg"
 
     try:
-        # MP3 ni OGG (Voice) formatiga o'tkazish
-        audio = AudioSegment.from_file(input_file)
-        audio.export(output_file, format="ogg", codec="libopus")
+        # FFmpeg yordamida MP3 ni Telegram ovozli formatiga (Opus OGG) o'tkazish
+        cmd = [
+            ffmpeg_path, "-y", "-i", input_file,
+            "-c:a", "libopus", "-b:a", "64k",
+            "-vbr", "on", "-f", "ogg", output_file
+        ]
+        
+        process = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
+        _, stderr = await process.communicate()
+
+        if process.returncode != 0:
+            raise Exception(f"FFmpeg xatoligi: {stderr.decode()}")
 
         # Akkauntingiz nomidan ovozli xabar yuborish
         await client.send_file(
@@ -151,7 +161,6 @@ async def process_and_send_voice(event, sender_id, target, edit_message=False):
             await event.reply(err_text)
 
     finally:
-        # Fayllarni tozalash
         if input_file and os.path.exists(input_file):
             os.remove(input_file)
         if os.path.exists(output_file):
